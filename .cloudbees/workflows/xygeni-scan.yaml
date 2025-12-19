@@ -1,0 +1,45 @@
+apiVersion: automation.cloudbees.io/v1alpha1
+kind: workflow
+name: xygeni-scan
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  xygeni-scan:
+    steps:
+      - name: Checkout
+        uses: cloudbees-io/checkout@v1
+        with:
+          fetch-depth: 0
+
+      - name: Download + unzip Xygeni Scanner + Run
+        uses: docker://maven:3.9.9-eclipse-temurin-17
+        env:
+          XYGENI_URL: "https://api.xygeni.io"
+          XYGENI_TOKEN: ${{ secrets.XYGENI_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          echo "== Verify required tools =="
+          command -v mvn >/dev/null 2>&1 || (echo "mvn not found" && exit 1)
+
+          # Ensure curl + unzip exist
+          if ! command -v curl >/dev/null 2>&1 || ! command -v unzip >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y curl unzip ca-certificates
+          fi
+
+          echo "== Download scanner zip =="
+          curl -sSL -o xygeni-release.zip https://get.xygeni.io/latest/scanner/xygeni-release.zip
+
+          echo "== Unzip =="
+          rm -rf xygeni_scanner
+          unzip -q xygeni-release.zip
+
+
+          chmod +x ./xygeni_scanner/xygeni
+
+          ./xygeni_scanner/xygeni \
+            --url "${XYGENI_URL}" \
+            scan --never-fail -n "${CLOUDBEES_REPO:-repo}" -d .
